@@ -997,10 +997,10 @@ class QNN:
                     if len(shape) > 2:
                         reshape_list += list(shape[2:])
 
-                if len(reshape_list) == 0:
-                    value_dict[expec_] = val_final.reshape(-1)[0]
-                else:
-                    value_dict[expec_] = val_final#.reshape(reshape_list)
+                #if len(reshape_list) == 0:
+                #    value_dict[expec_] = val_final.reshape(-1)[0]
+                #else:
+                value_dict[expec_] = np.array([i[0] for i in val_final])#.reshape(reshape_list)
                 ioff = ioff + 1
 
         # Set-up lables from the input list

@@ -475,7 +475,7 @@ class SquaredLoss(LossBase):
         if multiple_output:
             d_p = 2.0 * np.einsum("ij,ijk->k", weighted_diff, value_dict["dfdp"])
         else:
-            d_p = 2.0 * np.einsum("j,jk->k", weighted_diff, [i[0] for i in value_dict["dfdp"]])
+            d_p = 2.0 * np.einsum("j,jk->k", weighted_diff, value_dict["dfdp"])
 
         # Extra code for the cost operator derivatives
         if not self._opt_param_op:
@@ -484,7 +484,7 @@ class SquaredLoss(LossBase):
         if multiple_output:
             d_op = 2.0 * np.einsum("ij,ijk->k", weighted_diff, value_dict["dfdop"])
         else:
-            d_op = 2.0 * np.einsum("j,jk->k", weighted_diff, [i[0] for i in value_dict["dfdop"]])
+            d_op = 2.0 * np.einsum("j,jk->k", weighted_diff, value_dict["dfdop"])
         return d_p, d_op
 
 
