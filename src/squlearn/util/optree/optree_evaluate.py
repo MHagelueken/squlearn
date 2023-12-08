@@ -1217,7 +1217,9 @@ class OpTreeEvaluate:
         start = time.time()
         final_results = _evaluate_index_tree(evaluation_tree, estimator_result)
         # print("Post-processing: ", time.time() - start)
-
+        print(total_circuit_list[0])
+        print(total_operator_list[0])
+        print(total_parameter_list[0])
         return final_results
 
     @staticmethod
