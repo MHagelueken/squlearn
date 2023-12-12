@@ -1185,7 +1185,7 @@ class OpTreeEvaluate:
 
                 # Add everything to the total lists that are evaluated by the estimator
                 for i, circ in enumerate(circuit_list):
-                    total_circuit_list += [dictionary_circuit__[0].compose(circ)] * len(operator_list)
+                    total_circuit_list += [dictionary_circuit__[0].compose(circ)] * len(operator_list) #CHANGED total_circuit_list += [circ] * len(operator_list)
                     total_parameter_list += [parameter_list[i]] * len(operator_list)
                     for op in operator_list:
                         total_operator_list.append(op)

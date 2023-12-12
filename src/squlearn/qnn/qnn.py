@@ -258,7 +258,7 @@ class QNN:
         self._inital_shots = self._executor.get_shots()
 
         self._optree_caching = optree_caching
-        self._result_caching = False
+        self._result_caching = False #CHANGED result_caching
 
         self.pqc = TranspiledEncodingCircuit(pqc, self._executor.backend)
         self.operator = operator
@@ -880,14 +880,14 @@ class QNN:
         # Done with the helper functions, start of the evaluate function
 
         # input adjustments for x, param, param_op to get correct stacking of values
-        x_inp, multi_x = x,False#adjust_features(x, self.num_features)
+        x_inp, multi_x = x,False #CHANGED adjust_features(x, self.num_features)
         param_inp, multi_param = adjust_parameters(param, self.num_parameters)
         param_op_inp, multi_param_op = adjust_parameters(param_op, self.num_parameters_operator)
 
         # build dictionary for later use
         dict_encoding_circuit = []
         for x_inp_ in x_inp:
-            dd = dict([(0, x_inp_)])#dd = dict(zip(self.pqc_derivatives.feature_vector, x_inp_))
+            dd = dict([(0, x_inp_)]) #CHANGED dd = dict(zip(self.pqc_derivatives.feature_vector, x_inp_))
             for param_inp_ in param_inp:
                 ddd = dd.copy()
                 ddd.update(zip(self.pqc_derivatives.parameter_vector, param_inp_))
@@ -996,11 +996,12 @@ class QNN:
                 else:
                     if len(shape) > 2:
                         reshape_list += list(shape[2:])
-
+                
                 #if len(reshape_list) == 0:
                 #    value_dict[expec_] = val_final.reshape(-1)[0]
                 #else:
-                value_dict[expec_] = np.array([i[0] for i in val_final])#.reshape(reshape_list)
+                #    value_dict[expec_] = val_final.reshape(reshape_list)
+                value_dict[expec_] = np.array([i[0] for i in val_final]) #CHANGED
                 ioff = ioff + 1
 
         # Set-up lables from the input list
