@@ -48,7 +48,7 @@ class Adam(OptimizerBase, SGDMixin):
         self.skip_fun = options.get("skip_fun", False)
         self.eps = options.get("eps", 0.01)
 
-        self._callback = callback
+        self.callback = callback
         self.options = options
 
         self.gradient_deque = deque(maxlen=self.num_average)
@@ -137,8 +137,8 @@ class Adam(OptimizerBase, SGDMixin):
             if self.log_file is not None:
                 self._log(fval, gradient, np.linalg.norm(self.x - x_updated))
 
-            if self._callback is not None:
-                self._callback(self.iteration, self.x, gradient, fval)
+            if self.callback is not None:
+                self.callback(self.iteration, self.x, gradient, fval)
 
             # check termination
             if np.linalg.norm(self.x - x_updated) < self.tol:
