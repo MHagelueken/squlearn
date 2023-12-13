@@ -463,7 +463,7 @@ def train_mini_batch(
                     shot_control.set_shots_for_loss()
 
             loss_values = qnn.evaluate(
-                loss.loss_args_tuple, input_values[idcs[batch_slice]], param, param_op
+                loss.loss_args_tuple, [input_values[i] for i in idcs[batch_slice]], param, param_op #CHANGED input_values[idcs[batch_slice]]
             )
 
             batch_loss = loss.value(
@@ -482,7 +482,7 @@ def train_mini_batch(
                         batch_loss_variance = loss.variance(
                             qnn.evaluate(
                                 loss.variance_args_tuple,
-                                input_values[idcs[batch_slice]],
+                                [input_values[i] for i in idcs[batch_slice]], #CHANGED input_values[idcs[batch_slice]]
                                 param,
                                 param_op,
                             ),
@@ -498,7 +498,7 @@ def train_mini_batch(
                         raise ValueError("Loss variance necessary for ShotsFromRSTD shot control")
 
             diff_values = qnn.evaluate(
-                loss.gradient_args_tuple, input_values[idcs[batch_slice]], param, param_op
+                loss.gradient_args_tuple, [input_values[i] for i in idcs[batch_slice]], param, param_op #CHANGED input_values[idcs[batch_slice]]
             )
 
             grad = loss.gradient(
