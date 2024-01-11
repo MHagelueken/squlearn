@@ -1,0 +1,1203 @@
+[1mdiff --git a/src/squlearn/qnn/qnn.py b/src/squlearn/qnn/qnn.py[m
+[1mindex 34145f2..f1bc2bb 100644[m
+[1m--- a/src/squlearn/qnn/qnn.py[m
+[1m+++ b/src/squlearn/qnn/qnn.py[m
+[36m@@ -258,7 +258,7 @@[m [mclass QNN:[m
+         self._inital_shots = self._executor.get_shots()[m
+ [m
+         self._optree_caching = optree_caching[m
+[31m-        self._result_caching = result_caching[m
+[32m+[m[32m        self._result_caching = False #CHANGED result_caching[m
+ [m
+         self.pqc = TranspiledEncodingCircuit(pqc, self._executor.backend)[m
+         self.operator = operator[m
+[36m@@ -868,25 +868,26 @@[m [mclass QNN:[m
+                             yield j[m
+                     else:[m
+                         yield i[m
+[31m-[m
+[32m+[m[41m            [m
+             if isinstance(x, float):[m
+                 return tuple([x])[m
+             elif len(np.shape(x)) == 1:[m
+                 return tuple(list(x))[m
+             else:[m
+                 return tuple(flatten(x))[m
+[32m+[m[41m            [m
+ [m
+         # Done with the helper functions, start of the evaluate function[m
+ [m
+         # input adjustments for x, param, param_op to get correct stacking of values[m
+[31m-        x_inp, multi_x = adjust_features(x, self.num_features)[m
+[32m+[m[32m        x_inp, multi_x = x,False #CHANGED adjust_features(x, self.num_features)[m
+         param_inp, multi_param = adjust_parameters(param, self.num_parameters)[m
+         param_op_inp, multi_param_op = adjust_parameters(param_op, self.num_parameters_operator)[m
+ [m
+         # build dictionary for later use[m
+         dict_encoding_circuit = [][m
+         for x_inp_ in x_inp:[m
+[31m-            dd = dict(zip(self.pqc_derivatives.feature_vector, x_inp_))[m
+[32m+[m[32m            dd = dict([(0, x_inp_)]) #CHANGED dd = dict(zip(self.pqc_derivatives.feature_vector, x_inp_))[m
+             for param_inp_ in param_inp:[m
+                 ddd = dd.copy()[m
+                 ddd.update(zip(self.pqc_derivatives.parameter_vector, param_inp_))[m
+[36m@@ -902,7 +903,7 @@[m [mclass QNN:[m
+         # Sort the values, more complicated because values can be tuples of ParameterVectors[m
+         indices = np.argsort([str(t) for t in values])[m
+         values = tuple([values[i] for i in indices])[m
+[31m-[m
+[32m+[m[41m        [m
+         # return dictionary for input data, it will be empty[m
+         # if the combination of x,param,param_op is touched the first time[m
+         if self._result_caching == True:[m
+[36m@@ -995,11 +996,12 @@[m [mclass QNN:[m
+                 else:[m
+                     if len(shape) > 2:[m
+                         reshape_list += list(shape[2:])[m
+[31m-[m
+[31m-                if len(reshape_list) == 0:[m
+[31m-                    value_dict[expec_] = val_final.reshape(-1)[0][m
+[31m-                else:[m
+[31m-                    value_dict[expec_] = val_final.reshape(reshape_list)[m
+[32m+[m[41m                [m
+[32m+[m[32m                #if len(reshape_list) == 0:[m
+[32m+[m[32m                #    value_dict[expec_] = val_final.reshape(-1)[0][m
+[32m+[m[32m                #else:[m
+[32m+[m[32m                #    value_dict[expec_] = val_final.reshape(reshape_list)[m
+[32m+[m[32m                value_dict[expec_] = np.array([i[0] for i in val_final]) #CHANGED[m
+                 ioff = ioff + 1[m
+ [m
+         # Set-up lables from the input list[m
+[1mdiff --git a/src/squlearn/qnn/qnn_old.py b/src/squlearn/qnn/qnn_old.py[m
+[1mnew file mode 100644[m
+[1mindex 0000000..34145f2[m
+[1m--- /dev/null[m
+[1m+++ b/src/squlearn/qnn/qnn_old.py[m
+[36m@@ -0,0 +1,1071 @@[m
+[32m+[m[32mimport numpy as np[m
+[32m+[m[32mfrom typing import Union[m
+[32m+[m
+[32m+[m[32mfrom qiskit import QuantumCircuit[m
+[32m+[m[32mfrom qiskit.circuit import ParameterVector, ParameterExpression[m
+[32m+[m[32mfrom qiskit.circuit.parametervector import ParameterVectorElement[m
+[32m+[m
+[32m+[m[32mfrom ..observables.observable_base import ObservableBase[m
+[32m+[m[32mfrom ..observables.observable_derivatives import ([m
+[32m+[m[32m    ObservableDerivatives,[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m[32mfrom ..encoding_circuit.encoding_circuit_base import EncodingCircuitBase[m
+[32m+[m[32mfrom ..encoding_circuit.encoding_circuit_derivatives import ([m
+[32m+[m[32m    EncodingCircuitDerivatives,[m
+[32m+[m[32m)[m
+[32m+[m[32mfrom ..encoding_circuit.transpiled_encoding_circuit import TranspiledEncodingCircuit[m
+[32m+[m
+[32m+[m[32mfrom ..util.data_preprocessing import adjust_features, adjust_parameters[m
+[32m+[m[32mfrom ..util import Executor[m
+[32m+[m
+[32m+[m[32mfrom ..util.optree.optree import ([m
+[32m+[m[32m    OpTreeList,[m
+[32m+[m[32m    OpTreeCircuit,[m
+[32m+[m[32m    OpTree,[m
+[32m+[m[32m)[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass Expec:[m
+[32m+[m[32m    """Data structure that holds the set-up of derivative of the expectation value.[m
+[32m+[m
+[32m+[m[32m    Args:[m
+[32m+[m[32m        wave_function (Union[str, tuple, ParameterVectorElement]): Describes the wave function or[m
+[32m+[m[32m            its derivative. If tuple or ParameterVectorElement the differentiation with respect to[m
+[32m+[m[32m            the parameters in the tuple or with respect to the ParameterVectorElement is considered[m
+[32m+[m[32m        observable (str): String for the expectation value observable (``"O"``, ``"OO"``,[m
+[32m+[m[32m            ``"dop"``, ``"dopdop"``, ``"var"``).[m
+[32m+[m[32m        label (str): Label that is used for displaying or in the value dict of the QNN class.[m
+[32m+[m
+[32m+[m[32m    """[m
+[32m+[m
+[32m+[m[32m    def __init__([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        wave_function: Union[str, tuple, ParameterVectorElement],[m
+[32m+[m[32m        observable: str,[m
+[32m+[m[32m        label: str = "",[m
+[32m+[m[32m    ):[m
+[32m+[m[32m        self.wave_function = wave_function[m
+[32m+[m[32m        self.operator = observable[m
+[32m+[m[32m        self.label = label[m
+[32m+[m
+[32m+[m[32m    def __var_to_str(self, val: Union[str, tuple, ParameterExpression, ParameterVector]) -> str:[m
+[32m+[m[32m        """Converter for variables to string.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            val (Union[str, tuple, ParameterExpression, ParameterVector]): Input that is converted[m
+[32m+[m[32m                to string[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            String that contains the converted val variable[m
+[32m+[m
+[32m+[m[32m        """[m
+[32m+[m[32m        if isinstance(val, ParameterExpression):[m
+[32m+[m[32m            out_str = str(val.name)[m
+[32m+[m[32m        elif isinstance(val, ParameterVector):[m
+[32m+[m[32m            out_str = str(val.name)[m
+[32m+[m[32m        elif isinstance(val, tuple):[m
+[32m+[m[32m            out_str = "("[m
+[32m+[m[32m            for x in val:[m
+[32m+[m[32m                out_str += self.__var_to_str(x) + ","[m
+[32m+[m[32m            out_str += ")"[m
+[32m+[m[32m        elif isinstance(val, str):[m
+[32m+[m[32m            out_str = val[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            out_str = str(val)[m
+[32m+[m[32m        return out_str[m
+[32m+[m
+[32m+[m[32m    def __repr__(self) -> str:[m
+[32m+[m[32m        """Build-in string conversion for Expec class."""[m
+[32m+[m[32m        return self.__str__()[m
+[32m+[m
+[32m+[m[32m    def __str__(self) -> str:[m
+[32m+[m[32m        """Build-in string conversion for Expec class."""[m
+[32m+[m[32m        return ([m
+[32m+[m[32m            "Expec("[m
+[32m+[m[32m            + self.__var_to_str(self.wave_function)[m
+[32m+[m[32m            + ","[m
+[32m+[m[32m            + self.__var_to_str(self.operator)[m
+[32m+[m[32m            + ","[m
+[32m+[m[32m            + self.__var_to_str(self.label)[m
+[32m+[m[32m            + ")"[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m    def __len__(self) -> int:[m
+[32m+[m[32m        """Build-in length of Expec class (return 1)."""[m
+[32m+[m[32m        return 1[m
+[32m+[m
+[32m+[m[32m    def __eq__(self, other) -> bool:[m
+[32m+[m[32m        """Build-in comparison of two Expec class objects."""[m
+[32m+[m[32m        return ([m
+[32m+[m[32m            isinstance(other, self.__class__)[m
+[32m+[m[32m            and self.wave_function == other.wave_function[m
+[32m+[m[32m            and self.operator == other.operator[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m    def __hash__(self) -> int:[m
+[32m+[m[32m        """Build-in hash function for Expec class."""[m
+[32m+[m[32m        return hash((self.wave_function, self.operator))[m
+[32m+[m
+[32m+[m[32m    @classmethod[m
+[32m+[m[32m    def from_string(cls, val: str):[m
+[32m+[m[32m        """Converts an input string to the Expec data structure.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            String that defines the expectation value derivative[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Associated Expec object[m
+[32m+[m
+[32m+[m[32m        """[m
+[32m+[m
+[32m+[m[32m        if isinstance(val, str):[m
+[32m+[m[32m            if val == "f":[m
+[32m+[m[32m                return cls("I", "O", "f")[m
+[32m+[m[32m            elif val == "dfdx":[m
+[32m+[m[32m                return cls("dx", "O", "dfdx")[m
+[32m+[m[32m            elif val == "dfdxdx":[m
+[32m+[m[32m                return cls("dxdx", "O", "dfdxdx")[m
+[32m+[m[32m            elif val == "laplace":[m
+[32m+[m[32m                return cls("laplace", "O", "laplace")[m
+[32m+[m[32m            elif val == "laplace_dp":[m
+[32m+[m[32m                return cls("laplace_dp", "O", "laplace_dp")[m
+[32m+[m[32m            elif val == "laplace_dop":[m
+[32m+[m[32m                return cls("laplace", "dop", "laplace_dop")[m
+[32m+[m[32m            elif val == "dfdp":[m
+[32m+[m[32m                return cls("dp", "O", "dfdp")[m
+[32m+[m[32m            elif val == "dfdpdp":[m
+[32m+[m[32m                return cls("dpdp", "O", "dfdpdp")[m
+[32m+[m[32m            elif val == "dfdopdp":[m
+[32m+[m[32m                return cls("dp", "dop", "dfdop")[m
+[32m+[m[32m            elif val == "dfdpdop":[m
+[32m+[m[32m                raise ValueError("Not implemented, please use dfdopdp instead and transpose!")[m
+[32m+[m[32m            elif val == "dfdop":[m
+[32m+[m[32m                return cls("I", "dop", "dfdop")[m
+[32m+[m[32m            elif val == "dfdopdop":[m
+[32m+[m[32m                return cls("I", "dopdop", "dfdop")[m
+[32m+[m[32m            elif val == "dfdpdx":[m
+[32m+[m[32m                return cls("dpdx", "O", "dfdpdx")[m
+[32m+[m[32m            elif val == "dfdopdx":[m
+[32m+[m[32m                return cls("dx", "dop", "dfdopdx")[m
+[32m+[m[32m            elif val == "dfdopdxdx":[m
+[32m+[m[32m                return cls("dxdx", "dop", "dfdopdxdx")[m
+[32m+[m[32m            elif val == "fcc":[m
+[32m+[m[32m                return cls("I", "OO", "fcc")[m
+[32m+[m[32m            elif val == "dfccdx":[m
+[32m+[m[32m                return cls("dx", "OO", "dfccdx")[m
+[32m+[m[32m            elif val == "dfccdxdx":[m
+[32m+[m[32m                return cls("dxdx", "OO", "dfccdxdx")[m
+[32m+[m[32m            elif val == "dfccdp":[m
+[32m+[m[32m                return cls("dp", "OO", "dfccdp")[m
+[32m+[m[32m            elif val == "dfccdpdp":[m
+[32m+[m[32m                return cls("dpdp", "OO", "dfccdpdp")[m
+[32m+[m[32m            elif val == "dfccdopdx":[m
+[32m+[m[32m                return cls("dx", "OOdop", "dfccdpdp")[m
+[32m+[m[32m            elif val == "dfccdop":[m
+[32m+[m[32m                return cls("I", "OOdop", "dfccdop")[m
+[32m+[m[32m            elif val == "dfccdopdop":[m
+[32m+[m[32m                return cls("I", "OOdopdop", "dfccdopdop")[m
+[32m+[m[32m            elif val in ("var", "varf"):[m
+[32m+[m[32m                return cls("I", "var", val)[m
+[32m+[m[32m            elif val in ("dvardx", "dvarfdx"):[m
+[32m+[m[32m                return cls("dx", "var", val)[m
+[32m+[m[32m            elif val in ("dvardp", "dvarfdp"):[m
+[32m+[m[32m                return cls("dp", "var", val)[m
+[32m+[m[32m            elif val in ("dvardop", "dvarfdop"):[m
+[32m+[m[32m                return cls("I", "dvardop", val)[m
+[32m+[m[32m            elif val == "fischer":[m
+[32m+[m[32m                return cls("I", "fischer", val)[m
+[32m+[m[32m            else:[m
+[32m+[m[32m                raise ValueError("Unknown input string:", val)[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            raise TypeError("String expected, found type:", type(val))[m
+[32m+[m
+[32m+[m[32m    @classmethod[m
+[32m+[m[32m    def from_tuple(cls, val: tuple, operator: str = "O"):[m
+[32m+[m[32m        """Creates an Expec object from an input tuple[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            val (tuple): Tuple for the differentiation of the wave function.[m
+[32m+[m[32m            operator (str): String for the operator, default='O'.[m
+[32m+[m
+[32m+[m[32m        Returns[m
+[32m+[m[32m            Associated Expec object[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return cls(val, operator, val)[m
+[32m+[m
+[32m+[m[32m    @classmethod[m
+[32m+[m[32m    def from_parameter(cls, val: ParameterVectorElement, operator: str = "O"):[m
+[32m+[m[32m        """Creates an Expec object from an inputted parameter[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            val (ParameterVectorElement): Parameter that is used in the differentiation.[m
+[32m+[m[32m            operator (str): String for the operator, default='O'.[m
+[32m+[m
+[32m+[m[32m        Returns[m
+[32m+[m[32m            Associated Expec object[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return cls((val,), operator, (val,))[m
+[32m+[m
+[32m+[m[32m    @classmethod[m
+[32m+[m[32m    def from_variable(cls, val):[m
+[32m+[m[32m        """Creates an Expec object from an inputted value[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            val (Union[Expec,str,tuple,ParameterVectorElement]): value that defines the derivative[m
+[32m+[m
+[32m+[m[32m        Returns[m
+[32m+[m[32m            Associated Expec object[m
+[32m+[m[32m        """[m
+[32m+[m
+[32m+[m[32m        if isinstance(val, Expec):[m
+[32m+[m[32m            return val[m
+[32m+[m[32m        elif isinstance(val, str):[m
+[32m+[m[32m            return cls.from_string(val)[m
+[32m+[m[32m        elif isinstance(val, tuple):[m
+[32m+[m[32m            return cls.from_tuple(val)[m
+[32m+[m[32m        elif isinstance(val, ParameterVectorElement):[m
+[32m+[m[32m            return cls.from_parameter(val)[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            raise TypeError("Unsupported type:", type(val))[m
+[32m+[m
+[32m+[m
+[32m+[m[32mclass QNN:[m
+[32m+[m[32m    """A class for working with QNNs and its derivatives[m
+[32m+[m
+[32m+[m[32m    Args:[m
+[32m+[m[32m        pqc (EncodingCircuitBase) : parameterized quantum circuit in encoding circuit format[m
+[32m+[m[32m        operator (Union[ObservableBase,list]): Operator that is used in the expectation[m
+[32m+[m[32m            value of the QNN. Can be a list for multiple outputs.[m
+[32m+[m[32m        executor (Executor) : Executor that is used for the evaluation of the QNN[m
+[32m+[m[32m        optree_caching : Caching of the optree expressions (default = True recommended)[m
+[32m+[m[32m        result_caching : Caching of the result for each `x`, `param`, `param_op` combination[m
+[32m+[m[32m            (default = True)[m
+[32m+[m[32m    """[m
+[32m+[m
+[32m+[m[32m    def __init__([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        pqc: EncodingCircuitBase,[m
+[32m+[m[32m        operator: Union[ObservableBase, list],[m
+[32m+[m[32m        executor: Executor,[m
+[32m+[m[32m        optree_caching=True,[m
+[32m+[m[32m        result_caching=True,[m
+[32m+[m[32m    ) -> None:[m
+[32m+[m[32m        # Executer set-up[m
+[32m+[m[32m        self._executor = executor[m
+[32m+[m
+[32m+[m[32m        # Set-up shots from backend[m
+[32m+[m[32m        self._inital_shots = self._executor.get_shots()[m
+[32m+[m
+[32m+[m[32m        self._optree_caching = optree_caching[m
+[32m+[m[32m        self._result_caching = result_caching[m
+[32m+[m
+[32m+[m[32m        self.pqc = TranspiledEncodingCircuit(pqc, self._executor.backend)[m
+[32m+[m[32m        self.operator = operator[m
+[32m+[m
+[32m+[m[32m        # Set-Up Executor[m
+[32m+[m[32m        if self._executor.optree_executor == "estimator":[m
+[32m+[m[32m            self._estimator = self._executor.get_estimator()[m
+[32m+[m[32m            self._sampler = None[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            self._sampler = self._executor.get_sampler()[m
+[32m+[m[32m            self._estimator = None[m
+[32m+[m
+[32m+[m[32m        self._initilize_derivative()[m
+[32m+[m
+[32m+[m[32m    def get_params(self, deep: bool = True) -> dict:[m
+[32m+[m[32m        """Returns the dictionary of the hyper-parameters of the QNN.[m
+[32m+[m
+[32m+[m[32m        In case of multiple outputs, the hyper-parameters of the operator are prefixed[m
+[32m+[m[32m        with ``op0__``, ``op1__``, etc.[m
+[32m+[m
+[32m+[m[32m        """[m
+[32m+[m[32m        params = dict(num_qubits=self.num_qubits)[m
+[32m+[m
+[32m+[m[32m        if deep:[m
+[32m+[m[32m            params.update(self.pqc.get_params())[m
+[32m+[m[32m            if isinstance(self.operator, list):[m
+[32m+[m[32m                for i, oper in enumerate(self.operator):[m
+[32m+[m[32m                    oper_dict = oper.get_params()[m
+[32m+[m[32m                    for key, value in oper_dict.items():[m
+[32m+[m[32m                        if key != "num_qubits":[m
+[32m+[m[32m                            params["op" + str(i) + "__" + key] = value[m
+[32m+[m[32m            else:[m
+[32m+[m[32m                params.update(self.operator.get_params())[m
+[32m+[m[32m        return params[m
+[32m+[m
+[32m+[m[32m    def set_params(self, **params) -> None:[m
+[32m+[m[32m        """Sets the hyper-parameters of the QNN[m
+[32m+[m
+[32m+[m[32m        In case of multiple outputs, the hyper-parameters of the operator are prefixed[m
+[32m+[m[32m        with ``op0__``, ``op1__``, etc.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            params: Hyper-parameters that are adjusted, e.g. ``num_qubits=4``[m
+[32m+[m
+[32m+[m[32m        """[m
+[32m+[m
+[32m+[m[32m        # Check if all parameters are valid[m
+[32m+[m[32m        valid_params = self.get_params()[m
+[32m+[m[32m        for key, value in params.items():[m
+[32m+[m[32m            if key not in valid_params:[m
+[32m+[m[32m                raise ValueError([m
+[32m+[m[32m                    f"Invalid parameter {key!r}. "[m
+[32m+[m[32m                    f"Valid parameters are {sorted(valid_params)!r}."[m
+[32m+[m[32m                )[m
+[32m+[m
+[32m+[m[32m        # Set parameters of the PQC[m
+[32m+[m[32m        dict_pqc = {}[m
+[32m+[m[32m        for key, value in params.items():[m
+[32m+[m[32m            if key in self.pqc.get_params():[m
+[32m+[m[32m                dict_pqc[key] = value[m
+[32m+[m[32m        if len(dict_pqc) > 0:[m
+[32m+[m[32m            self.pqc.set_params(**dict_pqc)[m
+[32m+[m
+[32m+[m[32m        # Set parameters of the operator[m
+[32m+[m[32m        if isinstance(self.operator, list):[m
+[32m+[m[32m            for i, oper in enumerate(self.operator):[m
+[32m+[m[32m                dict_operator = {}[m
+[32m+[m[32m                for key, value in params.items():[m
+[32m+[m[32m                    if key == "num_qubits":[m
+[32m+[m[32m                        dict_operator[key] = value[m
+[32m+[m[32m                    else:[m
+[32m+[m[32m                        if key.startswith("op" + str(i) + "__"):[m
+[32m+[m[32m                            dict_operator[key.split("__", 1)[1]] = value[m
+[32m+[m[32m                if len(dict_operator) > 0:[m
+[32m+[m[32m                    oper.set_params(**dict_operator)[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            dict_operator = {}[m
+[32m+[m[32m            for key, value in params.items():[m
+[32m+[m[32m                if key in self.operator.get_params():[m
+[32m+[m[32m                    dict_operator[key] = value[m
+[32m+[m[32m            if len(dict_operator) > 0:[m
+[32m+[m[32m                self.operator.set_params(**dict_operator)[m
+[32m+[m
+[32m+[m[32m        self._initilize_derivative()[m
+[32m+[m
+[32m+[m[32m    def _initilize_derivative(self):[m
+[32m+[m[32m        """Initializes the derivative classes"""[m
+[32m+[m
+[32m+[m[32m        num_qubits_operator = 0[m
+[32m+[m[32m        if isinstance(self.operator, list):[m
+[32m+[m[32m            for i in range(len(self.operator)):[m
+[32m+[m[32m                self.operator[i].set_map(self.pqc.qubit_map, self.pqc.num_physical_qubits)[m
+[32m+[m[32m                num_qubits_operator = max(num_qubits_operator, self.operator[i].num_qubits)[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            self.operator.set_map(self.pqc.qubit_map, self.pqc.num_physical_qubits)[m
+[32m+[m[32m            num_qubits_operator = self.operator.num_qubits[m
+[32m+[m
+[32m+[m[32m        self.operator_derivatives = ObservableDerivatives(self.operator, self._optree_caching)[m
+[32m+[m[32m        self.pqc_derivatives = EncodingCircuitDerivatives(self.pqc, self._optree_caching)[m
+[32m+[m
+[32m+[m[32m        if self.pqc.num_virtual_qubits != num_qubits_operator:[m
+[32m+[m[32m            raise ValueError("Number of Qubits are not the same!")[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            self._num_qubits = self.pqc.num_virtual_qubits[m
+[32m+[m
+[32m+[m[32m        if self._executor.optree_executor == "sampler":[m
+[32m+[m[32m            # In case of the sampler primitive, X and Y Pauli matrices have to be treated extra[m
+[32m+[m[32m            # This can be very inefficient![m
+[32m+[m[32m            operator_string = str(self.operator)[m
+[32m+[m[32m            if "X" in operator_string or "Y" in operator_string:[m
+[32m+[m[32m                self._split_paulis = True[m
+[32m+[m[32m                print([m
+[32m+[m[32m                    "The observable includes X and Y gates, consider switching"[m
+[32m+[m[32m                    + " to the Estimator primitive for a faster performance!"[m
+[32m+[m[32m                )[m
+[32m+[m[32m            else:[m
+[32m+[m[32m                self._split_paulis = False[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            self._split_paulis = False[m
+[32m+[m
+[32m+[m[32m        # Initialize result cache[m
+[32m+[m[32m        self.result_container = {}[m
+[32m+[m
+[32m+[m[32m    def set_shots(self, num_shots: int) -> None:[m
+[32m+[m[32m        """Sets the number shots for the next evaluations.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            num_shots (int): Number of shots that are set[m
+[32m+[m[32m        """[m
+[32m+[m
+[32m+[m[32m        self._executor.set_shots(num_shots)[m
+[32m+[m
+[32m+[m[32m    def get_shots(self) -> int:[m
+[32m+[m[32m        """Getter for the number of shots.[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Returns the number of shots that are used for the current evaluation."""[m
+[32m+[m[32m        return self._executor.get_shots()[m
+[32m+[m
+[32m+[m[32m    def reset_shots(self) -> None:[m
+[32m+[m[32m        """Function for resetting the number of shots to the initial ones"""[m
+[32m+[m[32m        self._executor.reset_shots()[m
+[32m+[m
+[32m+[m[32m    @property[m
+[32m+[m[32m    def num_qubits(self) -> int:[m
+[32m+[m[32m        """Return the number of qubits of the QNN"""[m
+[32m+[m[32m        return self._num_qubits[m
+[32m+[m
+[32m+[m[32m    @property[m
+[32m+[m[32m    def num_features(self) -> int:[m
+[32m+[m[32m        """Return the dimension of the features of the PQC"""[m
+[32m+[m[32m        return self.pqc_derivatives.num_features[m
+[32m+[m
+[32m+[m[32m    @property[m
+[32m+[m[32m    def num_parameters(self) -> int:[m
+[32m+[m[32m        """Return the number of trainable parameters of the PQC"""[m
+[32m+[m[32m        return self.pqc_derivatives.num_parameters[m
+[32m+[m
+[32m+[m[32m    @property[m
+[32m+[m[32m    def num_operator(self) -> int:[m
+[32m+[m[32m        """Return the number outputs"""[m
+[32m+[m[32m        return self.operator_derivatives.num_operators[m
+[32m+[m
+[32m+[m[32m    @property[m
+[32m+[m[32m    def num_parameters_operator(self) -> int:[m
+[32m+[m[32m        """Return the number of trainable parameters of the expectation value operator"""[m
+[32m+[m[32m        return self.operator_derivatives.num_parameters[m
+[32m+[m
+[32m+[m[32m    @property[m
+[32m+[m[32m    def multiple_output(self) -> bool:[m
+[32m+[m[32m        """Return true if multiple outputs are used"""[m
+[32m+[m[32m        return self.operator_derivatives.multiple_output[m
+[32m+[m
+[32m+[m[32m    @property[m
+[32m+[m[32m    def parameters(self):[m
+[32m+[m[32m        """Return the parameter vector of the PQC."""[m
+[32m+[m[32m        return self.pqc_derivatives.parameter_vector[m
+[32m+[m
+[32m+[m[32m    @property[m
+[32m+[m[32m    def features(self):[m
+[32m+[m[32m        """Return the feature vector of the PQC."""[m
+[32m+[m[32m        return self.pqc_derivatives.feature_vector[m
+[32m+[m
+[32m+[m[32m    @property[m
+[32m+[m[32m    def parameters_operator(self):[m
+[32m+[m[32m        """Return the parameter vector of the cost operator."""[m
+[32m+[m[32m        return self.operator_derivatives.parameter_vector[m
+[32m+[m
+[32m+[m[32m    def get_optree_from_string(self, input_string: str):[m
+[32m+[m[32m        """Return the OpTree expression of the given PQC[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            input_string (str): String from which the OpTree is obtained.[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            OpTree structure created from the string.[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.get_optree_from_expec(Expec.from_string(input_string))[m
+[32m+[m
+[32m+[m[32m    def get_optree_from_expec(self, input_expec: Expec):[m
+[32m+[m[32m        """Returns the OpTree expression for the given :class:`Expec` object.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            input_expec (Expec): :class:`Expec` object from which the OpTree is obtained[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            OpTree structure created from the :class:`Expec` object.[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return OpTree.gen_expectation_tree([m
+[32m+[m[32m            self.pqc_derivatives.get_derivative(input_expec.wave_function),[m
+[32m+[m[32m            self.operator_derivatives.get_derivative(input_expec.operator),[m
+[32m+[m[32m        )[m
+[32m+[m
+[32m+[m[32m    def evaluate_diff_tuple([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        diff_tuple,[m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> Union[float, np.ndarray]:[m
+[32m+[m[32m        """Evaluate the given tuple of derivatives of the PQC.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            diff_tuple: Tuple with parameters used in the differentiation[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m[32m            param_op (Union[float,np.ndarray]): Parameter values of the operator[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Differentiated values of the QNN[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.evaluate((diff_tuple,), x, param, param_op)[diff_tuple][m
+[32m+[m
+[32m+[m[32m    def evaluate_from_string([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        input_string: str,[m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> Union[float, np.ndarray]:[m
+[32m+[m[32m        """Evaluate the given PQC from an input string[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            input_string (str): Input string that determines the evaluated value(s)[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m[32m            param_op (Union[float,np.ndarray]): Parameter values of the operator[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Values from the QNN defined by the string[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.evaluate(input_string, x, param, param_op)[input_string][m
+[32m+[m
+[32m+[m[32m    def evaluate_f([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> Union[float, np.ndarray]:[m
+[32m+[m[32m        """Evaluates the QNN[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m[32m            param_op (Union[float,np.ndarray]): Parameter values of the operator[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Values from the QNN[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.evaluate_from_string("f", x, param, param_op)[m
+[32m+[m
+[32m+[m[32m    def evaluate_dfdx([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> Union[float, np.ndarray]:[m
+[32m+[m[32m        """Evaluates derivatives of the QNN with respect to `x`.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m[32m            param_op (Union[float,np.ndarray]): Parameter values of the operator[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Evaluated derivatives of the the QNN with respect to `x`[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.evaluate_from_string("dfdx", x, param, param_op)[m
+[32m+[m
+[32m+[m[32m    def evaluate_dfdxdx([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> Union[float, np.ndarray]:[m
+[32m+[m[32m        """Evaluates second order derivatives of the QNN with respect to `x`.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m[32m            param_op (Union[float,np.ndarray]): Parameter values of the operator[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Evaluated second order derivatives of the the QNN with respect to `x`[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.evaluate_from_string("dfdxdx", x, param, param_op)[m
+[32m+[m
+[32m+[m[32m    def evaluate_laplace([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> Union[float, np.ndarray]:[m
+[32m+[m[32m        """Evaluates Laplacian of the QNN for `x`.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m[32m            param_op (Union[float,np.ndarray]): Parameter values of the operator[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Evaluated Laplacian of the the QNN for `x`[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.evaluate_from_string("laplace", x, param, param_op)[m
+[32m+[m
+[32m+[m[32m    def evaluate_laplace_dp([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> Union[float, np.ndarray]:[m
+[32m+[m[32m        """[m
+[32m+[m[32m        Evaluates the derivative of the Laplacian with respect to the PQC's parameters.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m[32m            param_op (Union[float,np.ndarray]): Parameter values of the operator[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Evaluated derivative of the Laplacian with respect to the PQC's parameters[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.evaluate_from_string("laplace_dp", x, param, param_op)[m
+[32m+[m
+[32m+[m[32m    def evaluate_laplace_dop([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> Union[float, np.ndarray]:[m
+[32m+[m[32m        """Evaluates the derivative of the Laplacian with respect to the operator's parameters.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m[32m            param_op (Union[float,np.ndarray]): Parameter values of the operator[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Evaluated derivative of the Laplacian with respect to the operator's parameters[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.evaluate_from_string("laplace_dop", x, param, param_op)[m
+[32m+[m
+[32m+[m[32m    def evaluate_dfdp([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> Union[float, np.ndarray]:[m
+[32m+[m[32m        """Evaluates the derivative of the QNN with respect to the PQC's parameters.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m[32m            param_op (Union[float,np.ndarray]): Parameter values of the operator[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Evaluated derivative of the the QNN with respect to the PQC's parameters.[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.evaluate_from_string("dfdp", x, param, param_op)[m
+[32m+[m
+[32m+[m[32m    def evaluate_dfdop([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> Union[float, np.ndarray]:[m
+[32m+[m[32m        """Evaluates the derivative of the QNN with respect to the operator's parameters.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m[32m            param_op (Union[float,np.ndarray]): Parameter values of the operator[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Evaluated derivative of the the QNN with respect to the operator's parameters.[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.evaluate_from_string("dfdop", x, param, param_op)[m
+[32m+[m
+[32m+[m[32m    def evaluate_dfdpdx([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> Union[float, np.ndarray]:[m
+[32m+[m[32m        """Evaluates the derivative of the QNN with respect to the PQC's parameters and `x`.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m[32m            param_op (Union[float,np.ndarray]): Parameter values of the operator[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Evaluated derivative of the QNN with respect to the PQC's parameters and `x`[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.evaluate_from_string("dfdpdx", x, param, param_op)[m
+[32m+[m
+[32m+[m[32m    def evaluate_dfdopdx([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> Union[float, np.ndarray]:[m
+[32m+[m[32m        """Evaluates the derivative of the QNN with respect to the operator's parameters and `x`.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m[32m            param_op (Union[float,np.ndarray]): Parameter values of the operator[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Evaluated derivative of the QNN with respect to the operator's parameters and `x`[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.evaluate_from_string("dfdopdx", x, param, param_op)[m
+[32m+[m
+[32m+[m[32m    def evaluate_variance([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> Union[float, np.ndarray]:[m
+[32m+[m[32m        """Evaluates the variance (<OO>-<O>^2) of the QNN[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m[32m            param_op (Union[float,np.ndarray]): Parameter values of the operator[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Evaluated variance of the the QNN[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.evaluate_from_string("var", x, param, param_op)[m
+[32m+[m
+[32m+[m[32m    def evaluate_var([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> Union[float, np.ndarray]:[m
+[32m+[m[32m        """Evaluates the variance (<OO>-<O>^2) of the QNN[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m[32m            param_op (Union[float,np.ndarray]): Parameter values of the operator[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            Evaluated variance of the the QNN[m
+[32m+[m[32m        """[m
+[32m+[m[32m        return self.evaluate_variance(x, param, param_op)[m
+[32m+[m
+[32m+[m[32m    def evaluate_probabilities(self, x: Union[float, np.ndarray], param: Union[float, np.ndarray]):[m
+[32m+[m[32m        """Evaluate the probabilities of the encoding circuit / PQC.[m
+[32m+[m
+[32m+[m[32m        The function only works with the QuantumInstance executer.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            x (Union[float,np.ndarray]): Input data values[m
+[32m+[m[32m            param (Union[float,np.ndarray]): Parameter values of the PQC[m
+[32m+[m
+[32m+[m[32m        Returns:[m
+[32m+[m[32m            List of probabilities stored in the SparseVectorStateFn format.[m
+[32m+[m[32m            (dictionary can be obtained by `.to_dict_fn()` or `to_dict_fn().primitive`)[m
+[32m+[m[32m        """[m
+[32m+[m
+[32m+[m[32m        optree = self.pqc_derivatives.get_derivative("I")[m
+[32m+[m[32m        dictionary = dict(zip(self.parameters, param))[m
+[32m+[m[32m        dictionary.update(zip(self.features, x))[m
+[32m+[m[32m        OpTree.assign_parameters(optree, dictionary, inplace=True)[m
+[32m+[m
+[32m+[m[32m        if isinstance(optree, QuantumCircuit):[m
+[32m+[m[32m            circuit = optree[m
+[32m+[m[32m        elif isinstance(optree, OpTreeCircuit):[m
+[32m+[m[32m            circuit = optree.circuit[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            raise TypeError("Unsported optree type:", type(optree))[m
+[32m+[m
+[32m+[m[32m        if circuit.num_clbits == 0:[m
+[32m+[m[32m            circuit.measure_all()[m
+[32m+[m
+[32m+[m[32m        sampler = self._executor.get_sampler()[m
+[32m+[m[32m        result = sampler.run(circuit).result()[m
+[32m+[m[32m        return result.quasi_dists[0].binary_probabilities()[m
+[32m+[m
+[32m+[m[32m    def evaluate([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        values,  # TODO: data type definition missing Union[str,Expec,tuple,...][m
+[32m+[m[32m        x: Union[float, np.ndarray],[m
+[32m+[m[32m        param: Union[float, np.ndarray],[m
+[32m+[m[32m        param_op: Union[float, np.ndarray],[m
+[32m+[m[32m    ) -> dict:[m
+[32m+[m[32m        """General function for evaluating the output of derivatives of the QNN.[m
+[32m+[m
+[32m+[m[32m        Evaluation works for given combination of[m
+[32m+[m[32m        input features `x` and parameters `param` and `param_op`.[m
+[32m+[m[32m        The function includes caching of results[m
+[32m+[m
+[32m+[m[32m        If `x`, `param`, and/or `param_op` are given as a nested list[m
+[32m+[m[32m        (for example multiple sets of parameters),[m
+[32m+[m[32m        the values are returned in a nested list.[m
+[32m+[m
+[32m+[m[32m        Args:[m
+[32m+[m[32m            values : list of what values and derivatives of the QNN are evaluated.[m
+[32m+[m[32m                Multiple inputs have to be a tuple.[m
+[32m+[m[32m            x (np.ndarray): Values of the input feature data.[m
+[32m+[m[32m            param (np.ndarray): Parameter values of the PQC parameters[m
+[32m+[m[32m            param_op (np.ndarray): Parameter values of the operator parameters[m
+[32m+[m
+[32m+[m
+[32m+[m[32m        Results:[m
+[32m+[m[32m            Returns a dictionary with the computed values.[m
+[32m+[m[32m            The keys of the dictionary are given by the entries in the values tuple[m
+[32m+[m
+[32m+[m[32m        """[m
+[32m+[m
+[32m+[m[32m        def generate_real_todo_dic(values, value_dict):[m
+[32m+[m[32m            """Converts the input values into a sorted dictionary[m
+[32m+[m[32m            of of Expec items"""[m
+[32m+[m
+[32m+[m[32m            # helper function for adding elemets to the real todo dict[m
+[32m+[m[32m            def add_to_real_todo_dic(item: Expec, real_todo_dic, value_dict):[m
+[32m+[m[32m                if item not in value_dict:[m
+[32m+[m[32m                    if item.wave_function in real_todo_dic:[m
+[32m+[m[32m                        #  check if i is already in the real todo list[m
+[32m+[m[32m                        if item not in real_todo_dic[item.wave_function]:[m
+[32m+[m[32m                            real_todo_dic[item.wave_function].append(item)[m
+[32m+[m[32m                    else:[m
+[32m+[m[32m                        real_todo_dic[item.wave_function] = [item][m
+[32m+[m[32m                return real_todo_dic[m
+[32m+[m
+[32m+[m[32m            # labels can be overwritten[m
+[32m+[m[32m            try:[m
+[32m+[m[32m                expec_list = [Expec.from_variable(i) for i in values][m
+[32m+[m[32m            except TypeError:[m
+[32m+[m[32m                expec_list = [Expec.from_variable(values)][m
+[32m+[m[32m            # build dictionary for later use[m
+[32m+[m[32m            real_todo_dic = {}[m
+[32m+[m[32m            for i in expec_list:[m
+[32m+[m[32m                # special cases of variance computation for post-processing:[m
+[32m+[m[32m                if i.operator == "var" and i.wave_function == "I":[m
+[32m+[m[32m                    real_todo_dic = add_to_real_todo_dic([m
+[32m+[m[32m                        Expec("I", "OO"), real_todo_dic, value_dict[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                    real_todo_dic = add_to_real_todo_dic([m
+[32m+[m[32m                        Expec("I", "O"), real_todo_dic, value_dict[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                elif i.operator == "var" and i.wave_function == "dx":[m
+[32m+[m[32m                    real_todo_dic = add_to_real_todo_dic([m
+[32m+[m[32m                        Expec("dx", "OO"), real_todo_dic, value_dict[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                    real_todo_dic = add_to_real_todo_dic([m
+[32m+[m[32m                        Expec("I", "O"), real_todo_dic, value_dict[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                    real_todo_dic = add_to_real_todo_dic([m
+[32m+[m[32m                        Expec("dx", "O"), real_todo_dic, value_dict[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                elif i.operator == "var" and i.wave_function == "dp":[m
+[32m+[m[32m                    real_todo_dic = add_to_real_todo_dic([m
+[32m+[m[32m                        Expec("dp", "OO"), real_todo_dic, value_dict[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                    real_todo_dic = add_to_real_todo_dic([m
+[32m+[m[32m                        Expec("I", "O"), real_todo_dic, value_dict[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                    real_todo_dic = add_to_real_todo_dic([m
+[32m+[m[32m                        Expec("dp", "O"), real_todo_dic, value_dict[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                elif i.operator == "dvardop" and i.wave_function == "I":[m
+[32m+[m[32m                    real_todo_dic = add_to_real_todo_dic([m
+[32m+[m[32m                        Expec("I", "OOdop"), real_todo_dic, value_dict[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                    real_todo_dic = add_to_real_todo_dic([m
+[32m+[m[32m                        Expec("I", "O"), real_todo_dic, value_dict[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                    real_todo_dic = add_to_real_todo_dic([m
+[32m+[m[32m                        Expec("I", "dop"), real_todo_dic, value_dict[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                else:[m
+[32m+[m[32m                    real_todo_dic = add_to_real_todo_dic(i, real_todo_dic, value_dict)[m
+[32m+[m[32m            return real_todo_dic[m
+[32m+[m
+[32m+[m[32m        def to_tuple(x):[m
+[32m+[m[32m            """helper function for converting data into hashable tuples"""[m
+[32m+[m
+[32m+[m[32m            def flatten(container):[m
+[32m+[m[32m                for i in container:[m
+[32m+[m[32m                    if isinstance(i, (list, tuple, np.ndarray)):[m
+[32m+[m[32m                        for j in flatten(i):[m
+[32m+[m[32m                            yield j[m
+[32m+[m[32m                    else:[m
+[32m+[m[32m                        yield i[m
+[32m+[m
+[32m+[m[32m            if isinstance(x, float):[m
+[32m+[m[32m                return tuple([x])[m
+[32m+[m[32m            elif len(np.shape(x)) == 1:[m
+[32m+[m[32m                return tuple(list(x))[m
+[32m+[m[32m            else:[m
+[32m+[m[32m                return tuple(flatten(x))[m
+[32m+[m
+[32m+[m[32m        # Done with the helper functions, start of the evaluate function[m
+[32m+[m
+[32m+[m[32m        # input adjustments for x, param, param_op to get correct stacking of values[m
+[32m+[m[32m        x_inp, multi_x = adjust_features(x, self.num_features)[m
+[32m+[m[32m        param_inp, multi_param = adjust_parameters(param, self.num_parameters)[m
+[32m+[m[32m        param_op_inp, multi_param_op = adjust_parameters(param_op, self.num_parameters_operator)[m
+[32m+[m
+[32m+[m[32m        # build dictionary for later use[m
+[32m+[m[32m        dict_encoding_circuit = [][m
+[32m+[m[32m        for x_inp_ in x_inp:[m
+[32m+[m[32m            dd = dict(zip(self.pqc_derivatives.feature_vector, x_inp_))[m
+[32m+[m[32m            for param_inp_ in param_inp:[m
+[32m+[m[32m                ddd = dd.copy()[m
+[32m+[m[32m                ddd.update(zip(self.pqc_derivatives.parameter_vector, param_inp_))[m
+[32m+[m[32m                dict_encoding_circuit.append(ddd)[m
+[32m+[m[32m        dict_operator = [[m
+[32m+[m[32m            dict(zip(self.operator_derivatives.parameter_vector, p)) for p in param_op_inp[m
+[32m+[m[32m        ][m
+[32m+[m
+[32m+[m[32m        # If values is not a tuple, convert it[m
+[32m+[m[32m        if not isinstance(values, tuple):[m
+[32m+[m[32m            values = (values,)[m
+[32m+[m
+[32m+[m[32m        # Sort the values, more complicated because values can be tuples of ParameterVectors[m
+[32m+[m[32m        indices = np.argsort([str(t) for t in values])[m
+[32m+[m[32m        values = tuple([values[i] for i in indices])[m
+[32m+[m
+[32m+[m[32m        # return dictionary for input data, it will be empty[m
+[32m+[m[32m        # if the combination of x,param,param_op is touched the first time[m
+[32m+[m[32m        if self._result_caching == True:[m
+[32m+[m[32m            caching_tuple = (to_tuple(x), to_tuple(param), to_tuple(param_op))[m
+[32m+[m[32m            value_dict = self.result_container.get(caching_tuple, {})[m
+[32m+[m[32m        else:[m
+[32m+[m[32m            value_dict = {}[m
+[32m+[m
+[32m+[m[32m        # create dictionary sorted w.r.t. the circuits[m
+[32m+[m[32m        # expectation values with the same circuits are evaluated only once[m
+[32m+[m[32m        # variance set-up is created here[m
+[32m+[m[32m        real_todo_dic = generate_real_todo_dic(values, value_dict)[m
+[32m+[m
+[32m+[m[32m        for key, op_list in real_todo_dic.items():[m
+[32m+[m[32m            # Obtained the derivative from the operator module[m
+[32m+[m
+[32m+[m[32m            operators = OpTreeList([m
+[32m+[m[32m                [self.operator_derivatives.get_derivative(expec_.operator) for expec_ in op_list][m
+[32m+[m[32m            )[m
+[32m+[m
+[32m+[m[32m            # get the circuits of the PQC derivatives from the encoding circuit module[m
+[32m+[m[32m            pqc_optree = self.pqc_derivatives.get_derivative(key)[m
+[32m+[m[32m            num_nested = OpTree.get_num_nested_lists(pqc_optree)[m
+[32m+[m
+[32m+[m[32m            if self._sampler is not None:[m
+[32m+[m[32m                val = OpTree.evaluate.evaluate_with_sampler([m
+[32m+[m[32m                    pqc_optree, operators, dict_encoding_circuit, dict_operator, self._sampler[m
+[32m+[m[32m                )[m
+[32m+[m[32m            elif self._estimator is not None:[m
+[32m+[m[32m                val = OpTree.evaluate.evaluate_with_estimator([m
+[32m+[m[32m                    pqc_optree, operators, dict_encoding_circuit, dict_operator, self._estimator[m
+[32m+[m[32m                )[m
+[32m+[m[32m            else:[m
+[32m+[m[32m                raise ValueError("No execution is set!")[m
+[32m+[m
+[32m+[m[32m            # Swapp results into the following order:[m
+[32m+[m[32m            # 1. different observables (op_list)[m
+[32m+[m[32m            # 2. different input data/ encoding circuit parameters (x_inp,params) -> separated later[m
+[32m+[m[32m            # 3. different operator parameters (param_op_inp)[m
+[32m+[m[32m            # 4. different output values (multi_output)[m
+[32m+[m[32m            # 5. If there, lists of the operators (e.g. operator derivatives)[m
+[32m+[m[32m            # 6. if there, lists of the circuits (e.g. array for gradient)[m
+[32m+[m
+[32m+[m[32m            ilist = list(range(len(val.shape)))[m
+[32m+[m
+[32m+[m[32m            #             # Op_list index       # fm dict   # op dict[m
+[32m+[m[32m            swapp_list = [ilist[2 + num_nested]] + [ilist[0]] + [ilist[1]][m
+[32m+[m
+[32m+[m[32m            length = 3 + num_nested[m
+[32m+[m[32m            # Add multiple output data next[m
+[32m+[m[32m            if self.multiple_output:[m
+[32m+[m[32m                length += 1[m
+[32m+[m[32m                swapp_list = swapp_list + [ilist[-1]][m
+[32m+[m
+[32m+[m[32m            # If there are lists in the operators, add them next (e.g. dfdop)[m
+[32m+[m[32m            if len(ilist) > length:[m
+[32m+[m[32m                if self.multiple_output:[m
+[32m+[m[32m                    swapp_list = swapp_list + ilist[3 + num_nested : -1][m
+[32m+[m[32m                else:[m
+[32m+[m[32m                    swapp_list = swapp_list + ilist[3 + num_nested :][m
+[32m+[m
+[32m+[m[32m            # If there are lists in the circuits, add them here (e.g. dfdp)[m
+[32m+[m[32m            if num_nested > 0:[m
+[32m+[m[32m                swapp_list = swapp_list + ilist[2 : 2 + num_nested][m
+[32m+[m
+[32m+[m[32m            val = np.transpose(val, axes=swapp_list)[m
+[32m+[m
+[32m+[m[32m            # store results in value_dict[m
+[32m+[m[32m            # if get rid of unncessary arrays to fit the input vector nesting[m
+[32m+[m[32m            ioff = 0[m
+[32m+[m[32m            for iexpec, expec_ in enumerate(op_list):[m
+[32m+[m[32m                if isinstance(val[iexpec], object):[m
+[32m+[m[32m                    # tolist() is needed, since numpy array conversion is otherwise hanging[m
+[32m+[m[32m                    val_final = np.array(val[iexpec].tolist(), dtype=float)[m
+[32m+[m[32m                else:[m
+[32m+[m[32m                    val_final = val[iexpec][m
+[32m+[m[32m                reshape_list = [][m
+[32m+[m[32m                shape = val_final.shape[m
+[32m+[m[32m                if multi_x:[m
+[32m+[m[32m                    reshape_list.append(len(x))[m
+[32m+[m[32m                if multi_param:[m
+[32m+[m[32m                    reshape_list.append(len(param))[m
+[32m+[m[32m                if multi_param_op:[m
+[32m+[m[32m                    reshape_list.append(shape[1])[m
+[32m+[m[32m                if self.multiple_output:[m
+[32m+[m[32m                    reshape_list.append(shape[2])[m
+[32m+[m[32m                if self.multiple_output:[m
+[32m+[m[32m                    if len(shape) > 3:[m
+[32m+[m[32m                        reshape_list += list(shape[3:])[m
+[32m+[m[32m                else:[m
+[32m+[m[32m                    if len(shape) > 2:[m
+[32m+[m[32m                        reshape_list += list(shape[2:])[m
+[32m+[m
+[32m+[m[32m                if len(reshape_list) == 0:[m
+[32m+[m[32m                    value_dict[expec_] = val_final.reshape(-1)[0][m
+[32m+[m[32m                else:[m
+[32m+[m[32m                    value_dict[expec_] = val_final.reshape(reshape_list)[m
+[32m+[m[32m                ioff = ioff + 1[m
+[32m+[m
+[32m+[m[32m        # Set-up lables from the input list[m
+[32m+[m[32m        for todo in values:[m
+[32m+[m[32m            todo_expec = Expec.from_variable(todo)[m
+[32m+[m
+[32m+[m[32m            # post-processing of the variance[m
+[32m+[m[32m            # variance[m
+[32m+[m[32m            if todo_expec.operator == "var" and todo_expec.wave_function == "I":[m
+[32m+[m[32m                value_dict[todo_expec] = value_dict[Expec("I", "OO")] - np.square([m
+[32m+[m[32m                    value_dict[Expec("I", "O")][m
+[32m+[m[32m                )[m
+[32m+[m[32m            # d/dx variance[m
+[32m+[m[32m            elif todo_expec.operator == "var" and todo_expec.wave_function == "dx":[m
+[32m+[m[32m                if self.num_features == 1:[m
+[32m+[m[32m                    value_dict[todo_expec] = value_dict[Expec("dx", "OO")] - 2.0 * ([m
+[32m+[m[32m                        np.multiply(value_dict[Expec("dx", "O")], value_dict[Expec("I", "O")])[m
+[32m+[m[32m                    )[m
+[32m+[m[32m                else:[m
+[32m+[m[32m                    value_dict[todo_expec] = np.zeros(value_dict[Expec("dx", "OO")].shape)[m
+[32m+[m[32m                    for i in range(value_dict[Expec("dx", "OO")].shape[-1]):[m
+[32m+[m[32m                        value_dict[todo_expec][..., i] = value_dict[Expec("dx", "OO")][[m
+[32m+[m[32m                            ..., i[m
+[32m+[m[32m                        ] - 2.0 * ([m
+[32m+[m[32m                            np.multiply([m
+[32m+[m[32m                                value_dict[Expec("dx", "O")][..., i],[m
+[32m+[m[32m                                value_dict[Expec("I", "O")],[m
+[32m+[m[32m                            )[m
+[32m+[m[32m                        )[m
+[32m+[m[32m            # d/dp variance[m
+[32m+[m[32m            elif todo_expec.operator == "var" and todo_expec.wave_function == "dp":[m
+[32m+[m[32m                value_dict[todo_expec] = np.zeros(value_dict[Expec("dp", "OO")].shape)[m
+[32m+[m[32m                for i in range(value_dict[Expec("dp", "OO")].shape[-1]):[m
+[32m+[m[32m                    value_dict[todo_expec][..., i] = value_dict[Expec("dp", "OO")][[m
+[32m+[m[32m                        ..., i[m
+[32m+[m[32m                    ] - 2.0 * ([m
+[32m+[m[32m                        np.multiply([m
+[32m+[m[32m                            value_dict[Expec("dp", "O")][..., i],[m
+[32m+[m[32m                            value_dict[Expec("I", "O")],[m
+[32m+[m[32m                        )[m
+[32m+[m[32m                    )[m
+[32m+[m[32m            # d/dop variance[m
+[32m+[m[32m            elif todo_expec.operator == "dvardop" and todo_expec.wave_function == "I":[m
+[32m+[m[32m                value_dict[todo_expec] = np.zeros(value_dict[Expec("I", "OOdop")].shape)[m
+[32m+[m[32m                for i in range(value_dict[Expec("I", "OOdop")].shape[-1]):[m
+[32m+[m[32m                    value_dict[todo_expec][..., i] = value_dict[Expec("I", "OOdop")][[m
+[32m+[m[32m                        ..., i[m
+[32m+[m[32m                    ] - 2.0 * ([m
+[32m+[m[32m                        np.multiply([m
+[32m+[m[32m                            value_dict[Expec("I", "dop")][..., i],[m
+[32m+[m[32m                            value_dict[Expec("I", "O")],[m
+[32m+[m[32m                        )[m
+[32m+[m[32m                    )[m
+[32m+[m
+[32m+[m[32m            # assign values to the label of the expectation value[m
+[32m+[m[32m            value_dict[todo] = value_dict[todo_expec][m
+[32m+[m[32m            if isinstance(todo, Expec) and todo.label != "":[m
+[32m+[m[32m                value_dict[todo.label] = value_dict[todo_expec][m
+[32m+[m
+[32m+[m[32m        # Add x, param, and param_op to the dictionary as default[m
+[32m+[m[32m        value_dict["x"] = x[m
+[32m+[m[32m        value_dict["param"] = param[m
+[32m+[m[32m        value_dict["param_op"] = param_op[m
+[32m+[m
+[32m+[m[32m        # Store the updated dictionary for the theta value[m
+[32m+[m[32m        if self._result_caching:[m
+[32m+[m[32m            self.result_container[caching_tuple] = value_dict[m
+[32m+[m
+[32m+[m[32m        return value_dict[m
+[1mdiff --git a/src/squlearn/qnn/training.py b/src/squlearn/qnn/training.py[m
+[1mindex f3e8f81..c3df99f 100644[m
+[1m--- a/src/squlearn/qnn/training.py[m
+[1m+++ b/src/squlearn/qnn/training.py[m
+[36m@@ -463,7 +463,7 @@[m [mdef train_mini_batch([m
+                     shot_control.set_shots_for_loss()[m
+ [m
+             loss_values = qnn.evaluate([m
+[31m-                loss.loss_args_tuple, input_values[idcs[batch_slice]], param, param_op[m
+[32m+[m[32m                loss.loss_args_tuple, [input_values[i] for i in idcs[batch_slice]], param, param_op #CHANGED input_values[idcs[batch_slice]][m
+             )[m
+ [m
+             batch_loss = loss.value([m
+[36m@@ -482,7 +482,7 @@[m [mdef train_mini_batch([m
+                         batch_loss_variance = loss.variance([m
+                             qnn.evaluate([m
+                                 loss.variance_args_tuple,[m
+[31m-                                input_values[idcs[batch_slice]],[m
+[32m+[m[32m                                [input_values[i] for i in idcs[batch_slice]], #CHANGED input_values[idcs[batch_slice]][m
+                                 param,[m
+                                 param_op,[m
+                             ),[m
+[36m@@ -498,7 +498,7 @@[m [mdef train_mini_batch([m
+                         raise ValueError("Loss variance necessary for ShotsFromRSTD shot control")[m
+ [m
+             diff_values = qnn.evaluate([m
+[31m-                loss.gradient_args_tuple, input_values[idcs[batch_slice]], param, param_op[m
+[32m+[m[32m                loss.gradient_args_tuple, [input_values[i] for i in idcs[batch_slice]], param, param_op #CHANGED input_values[idcs[batch_slice]][m
+             )[m
+ [m
+             grad = loss.gradient([m
+[1mdiff --git a/src/squlearn/util/optree/optree_evaluate.py b/src/squlearn/util/optree/optree_evaluate.py[m
+[1mindex 890bc8e..50888f2 100644[m
+[1m--- a/src/squlearn/util/optree/optree_evaluate.py[m
+[1m+++ b/src/squlearn/util/optree/optree_evaluate.py[m
+[36m@@ -978,9 +978,9 @@[m [mclass OpTreeEvaluate:[m
+             for i, circ_unmeasured in enumerate(circuit_list):[m
+                 for measure in measurement_circuits:[m
+                     if measure is None:[m
+[31m-                        total_circuit_list.append(circ_unmeasured.measure_all(inplace=False))[m
+[32m+[m[32m                        total_circuit_list += [dictionary_circuit_[0].compose(circ_unmeasured.measure_all(inplace=False))] #total_circuit_list.append(circ_unmeasured.measure_all(inplace=False))[m
+                     else:[m
+[31m-                        total_circuit_list.append(circ_unmeasured.compose(measure, inplace=False))[m
+[32m+[m[32m                        total_circuit_list += [dictionary_circuit_[0].compose(circ_unmeasured.compose(measure, inplace=False))] #total_circuit_list.append(circ_unmeasured.compose(measure, inplace=False))[m
+                 total_parameter_list += [parameter_list[i]] * len(operator_measurement_list)[m
+                 circuit_operator_list.append(operator_measurement_list)[m
+ [m
+[36m@@ -1161,7 +1161,6 @@[m [mclass OpTreeEvaluate:[m
+             circuit_list, parameter_list, circuit_tree = _build_circuit_list([m
+                 circuit, dictionary_circuit__, detect_duplicates[m
+             )[m
+[31m-[m
+             # Handle operator dictionary[m
+             if dictionaries_combined:[m
+                 dictionary_operator_ = [dictionary_operator[i]][m
+[36m@@ -1186

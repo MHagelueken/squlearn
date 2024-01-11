@@ -978,9 +978,9 @@ class OpTreeEvaluate:
             for i, circ_unmeasured in enumerate(circuit_list):
                 for measure in measurement_circuits:
                     if measure is None:
-                        total_circuit_list += [dictionary_circuit_[0].compose(circ_unmeasured.measure_all(inplace=False))] #total_circuit_list.append(circ_unmeasured.measure_all(inplace=False))
+                        total_circuit_list += [dictionary_circuit_[0].compose(circ_unmeasured.measure_all(inplace=False))] #CHANGED total_circuit_list.append(circ_unmeasured.measure_all(inplace=False))
                     else:
-                        total_circuit_list += [dictionary_circuit_[0].compose(circ_unmeasured.compose(measure, inplace=False))] #total_circuit_list.append(circ_unmeasured.compose(measure, inplace=False))
+                        total_circuit_list += [dictionary_circuit_[0].compose(circ_unmeasured.compose(measure, inplace=False))] #CHANGED total_circuit_list.append(circ_unmeasured.compose(measure, inplace=False))
                 total_parameter_list += [parameter_list[i]] * len(operator_measurement_list)
                 circuit_operator_list.append(operator_measurement_list)
 
