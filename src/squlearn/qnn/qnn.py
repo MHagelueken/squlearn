@@ -26,11 +26,7 @@ from ..util.optree.optree import (
     OpTreeList,
     OpTreeSum,
     OpTreeCircuit,
-    OpTreeOperator,
-    OpTreeContainer,
     OpTreeValue,
-    OpTreeExpectationValue,
-    OpTreeMeasuredOperator,
 ) #CHANGED
 
 
