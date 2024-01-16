@@ -895,7 +895,7 @@ class QNN:
         # build dictionary for later use
         dict_encoding_circuit = []
         #for x_inp_ in x_inp:
-        #    dd = dict([(0, x_inp_)]) #CHANGED dd = dict(zip(self.pqc_derivatives.feature_vector, x_inp_))
+        #    dd = dict(zip(self.pqc_derivatives.feature_vector, x_inp_)) #CHANGED 
         for param_inp_ in param_inp:
             ddd = dict()#dd.copy()
             ddd.update(zip(self.pqc_derivatives.parameter_vector, param_inp_))
@@ -1058,8 +1058,7 @@ class QNN:
                     value_dict[expec_] = val_final.reshape(-1)[0]
                 else:
                     value_dict[expec_] = val_final.reshape(reshape_list)
-                #value_dict[expec_] = np.array([i[0] for i in val_final]) #CHANGED
-                #ioff = ioff + 1
+                ioff = ioff + 1
 
         # Set-up lables from the input list
         for todo in values:
