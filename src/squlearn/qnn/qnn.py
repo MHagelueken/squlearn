@@ -31,7 +31,7 @@ from ..util.optree.optree import (
     OpTreeValue,
     OpTreeExpectationValue,
     OpTreeMeasuredOperator,
-)
+) #CHANGED
 
 
 class Expec:
@@ -923,7 +923,7 @@ class QNN:
         # create dictionary sorted w.r.t. the circuits
         # expectation values with the same circuits are evaluated only once
         # variance set-up is created here
-        real_todo_dic = generate_real_todo_dic(values, value_dict)#CHANGE start
+        real_todo_dic = generate_real_todo_dic(values, value_dict)
 
         for key, op_list in real_todo_dic.items():
             # Obtained the derivative from the operator module
@@ -933,7 +933,7 @@ class QNN:
             )
 
             # get the circuits of the PQC derivatives from the encoding circuit module
-            pqc_optree_1 = self.pqc_derivatives.get_derivative(key)
+            pqc_optree_1 = self.pqc_derivatives.get_derivative(key)#CHANGED start
 
             def _build_lists_and_index_tree(
                 optree_element: Union[OpTreeNodeBase, OpTreeLeafBase, QuantumCircuit, OpTreeValue]
@@ -981,7 +981,7 @@ class QNN:
                     else:
                         raise ValueError("element must be a CircuitTreeLeaf or a QuantumCircuit")
 
-            pqc_optree = _build_lists_and_index_tree(pqc_optree_1)#CHANGE end
+            pqc_optree = _build_lists_and_index_tree(pqc_optree_1)#CHANGED end
 
             num_nested = OpTree.get_num_nested_lists(pqc_optree)
 
