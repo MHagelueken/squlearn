@@ -978,9 +978,9 @@ class OpTreeEvaluate:
             for i, circ_unmeasured in enumerate(circuit_list):
                 for measure in measurement_circuits:
                     if measure is None:
-                        total_circuit_list += [dictionary_circuit_[0].compose(circ_unmeasured.measure_all(inplace=False))] #CHANGED total_circuit_list.append(circ_unmeasured.measure_all(inplace=False))
+                        total_circuit_list.append(circ_unmeasured.measure_all(inplace=False))
                     else:
-                        total_circuit_list += [dictionary_circuit_[0].compose(circ_unmeasured.compose(measure, inplace=False))] #CHANGED total_circuit_list.append(circ_unmeasured.compose(measure, inplace=False))
+                        total_circuit_list.append(circ_unmeasured.compose(measure, inplace=False))
                 total_parameter_list += [parameter_list[i]] * len(operator_measurement_list)
                 circuit_operator_list.append(operator_measurement_list)
 
@@ -1184,9 +1184,9 @@ class OpTreeEvaluate:
                 )
 
                 # Add everything to the total lists that are evaluated by the estimator
-                for i, circ in enumerate(circuit_list):
-                    total_circuit_list += [dictionary_circuit__[0].compose(circ)] * len(operator_list) #CHANGED total_circuit_list += [circ] * len(operator_list)
-                    total_parameter_list += [parameter_list[i]] * len(operator_list)
+                for j, circ in enumerate(circuit_list):
+                    total_circuit_list += [circ] * len(operator_list)
+                    total_parameter_list += [parameter_list[j]] * len(operator_list)
                     for op in operator_list:
                         total_operator_list.append(op)
 
@@ -1205,7 +1205,6 @@ class OpTreeEvaluate:
         # Evaluation via the estimator
         start = time.time()
         # print("Number of circuits for estimator: ", len(total_circuit_list))
-
         estimator_result = (
             estimator.run(total_circuit_list, total_operator_list, total_parameter_list)
             .result()

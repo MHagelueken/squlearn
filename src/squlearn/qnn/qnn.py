@@ -20,9 +20,17 @@ from ..util.data_preprocessing import adjust_features, adjust_parameters
 from ..util import Executor
 
 from ..util.optree.optree import (
-    OpTreeList,
-    OpTreeCircuit,
     OpTree,
+    OpTreeNodeBase,
+    OpTreeLeafBase,
+    OpTreeList,
+    OpTreeSum,
+    OpTreeCircuit,
+    OpTreeOperator,
+    OpTreeContainer,
+    OpTreeValue,
+    OpTreeExpectationValue,
+    OpTreeMeasuredOperator,
 )
 
 
@@ -886,12 +894,12 @@ class QNN:
 
         # build dictionary for later use
         dict_encoding_circuit = []
-        for x_inp_ in x_inp:
-            dd = dict([(0, x_inp_)]) #CHANGED dd = dict(zip(self.pqc_derivatives.feature_vector, x_inp_))
-            for param_inp_ in param_inp:
-                ddd = dd.copy()
-                ddd.update(zip(self.pqc_derivatives.parameter_vector, param_inp_))
-                dict_encoding_circuit.append(ddd)
+        #for x_inp_ in x_inp:
+        #    dd = dict([(0, x_inp_)]) #CHANGED dd = dict(zip(self.pqc_derivatives.feature_vector, x_inp_))
+        for param_inp_ in param_inp:
+            ddd = dict()#dd.copy()
+            ddd.update(zip(self.pqc_derivatives.parameter_vector, param_inp_))
+            dict_encoding_circuit.append(ddd)
         dict_operator = [
             dict(zip(self.operator_derivatives.parameter_vector, p)) for p in param_op_inp
         ]
@@ -915,7 +923,7 @@ class QNN:
         # create dictionary sorted w.r.t. the circuits
         # expectation values with the same circuits are evaluated only once
         # variance set-up is created here
-        real_todo_dic = generate_real_todo_dic(values, value_dict)
+        real_todo_dic = generate_real_todo_dic(values, value_dict)#CHANGE start
 
         for key, op_list in real_todo_dic.items():
             # Obtained the derivative from the operator module
@@ -925,7 +933,56 @@ class QNN:
             )
 
             # get the circuits of the PQC derivatives from the encoding circuit module
-            pqc_optree = self.pqc_derivatives.get_derivative(key)
+            pqc_optree_1 = self.pqc_derivatives.get_derivative(key)
+
+            def _build_lists_and_index_tree(
+                optree_element: Union[OpTreeNodeBase, OpTreeLeafBase, QuantumCircuit, OpTreeValue]
+            ):
+                """
+                Helper function for unpacking the optree and adding the input circuits in front.
+                """
+
+                if isinstance(optree_element, OpTreeNodeBase):
+                    # Recursive copy of the OpTreeNode structure and binding of the parameters
+                    # in the OpTree structure.
+                    child_list_indexed = [_build_lists_and_index_tree(c) for c in optree_element.children]
+                    factor_list_bound = []
+                    for fac in optree_element.factor:
+                        if isinstance(fac, ParameterExpression):
+                            factor_list_bound.append(
+                                float(fac.bind(dictionary, allow_unknown_parameters=True))
+                            )
+                        else:
+                            factor_list_bound.append(fac)
+
+                    # Recursive rebuild of the OpTree structure
+                    if isinstance(optree_element, OpTreeSum):
+                        return OpTreeSum(child_list_indexed, factor_list_bound, optree_element.operation)
+                    elif isinstance(optree_element, OpTreeList):
+                        return OpTreeList(child_list_indexed, factor_list_bound, optree_element.operation)
+                    else:
+                        raise ValueError("element must be a OpTreeNodeSum or a OpTreeNodeList")
+
+                else:
+                    # Reached a CircuitTreeLeaf
+                    # Get the circuit, and check for duplicates if necessary.
+                    if isinstance(optree_element, QuantumCircuit):
+                        return_list = []
+                        for x_inp_ in x_inp:
+                            return_list.append(OpTreeCircuit(x_inp_.compose(optree_element)))
+                        return OpTreeList(return_list)
+                    elif isinstance(optree_element, OpTreeCircuit):
+                        return_list = []
+                        for x_inp_ in x_inp:
+                            return_list.append(OpTreeCircuit(x_inp_.compose(optree_element.circuit)))
+                        return OpTreeList(return_list)
+                    elif isinstance(optree_element, OpTreeValue):
+                        return optree_element  # Add nothing to the lists
+                    else:
+                        raise ValueError("element must be a CircuitTreeLeaf or a QuantumCircuit")
+
+            pqc_optree = _build_lists_and_index_tree(pqc_optree_1)#CHANGE end
+
             num_nested = OpTree.get_num_nested_lists(pqc_optree)
 
             if self._sampler is not None:
@@ -997,12 +1054,12 @@ class QNN:
                     if len(shape) > 2:
                         reshape_list += list(shape[2:])
                 
-                #if len(reshape_list) == 0:
-                #    value_dict[expec_] = val_final.reshape(-1)[0]
-                #else:
-                #    value_dict[expec_] = val_final.reshape(reshape_list)
-                value_dict[expec_] = np.array([i[0] for i in val_final]) #CHANGED
-                ioff = ioff + 1
+                if len(reshape_list) == 0:
+                    value_dict[expec_] = val_final.reshape(-1)[0]
+                else:
+                    value_dict[expec_] = val_final.reshape(reshape_list)
+                #value_dict[expec_] = np.array([i[0] for i in val_final]) #CHANGED
+                #ioff = ioff + 1
 
         # Set-up lables from the input list
         for todo in values:
