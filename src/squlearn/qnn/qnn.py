@@ -891,9 +891,9 @@ class QNN:
         # build dictionary for later use
         dict_encoding_circuit = []
         #for x_inp_ in x_inp:
-        #    dd = dict(zip(self.pqc_derivatives.feature_vector, x_inp_)) #CHANGED 
+        #    dd = dict({0:x_inp_})#dd = dict(zip(self.pqc_derivatives.feature_vector, x_inp_)) #CHANGED 
         for param_inp_ in param_inp:
-            ddd = dict()#dd.copy()
+            ddd = dict() #dd.copy()
             ddd.update(zip(self.pqc_derivatives.parameter_vector, param_inp_))
             dict_encoding_circuit.append(ddd)
         dict_operator = [
@@ -930,7 +930,7 @@ class QNN:
 
             # get the circuits of the PQC derivatives from the encoding circuit module
             pqc_optree_1 = self.pqc_derivatives.get_derivative(key)#CHANGED start
-
+            
             def _build_lists_and_index_tree(
                 optree_element: Union[OpTreeNodeBase, OpTreeLeafBase, QuantumCircuit, OpTreeValue]
             ):
@@ -978,8 +978,8 @@ class QNN:
                         raise ValueError("element must be a CircuitTreeLeaf or a QuantumCircuit")
 
             pqc_optree = _build_lists_and_index_tree(pqc_optree_1)#CHANGED end
-
-            num_nested = OpTree.get_num_nested_lists(pqc_optree)
+            
+            num_nested = OpTree.get_num_nested_lists(pqc_optree_1) #CHANGED
 
             if self._sampler is not None:
                 val = OpTree.evaluate.evaluate_with_sampler(
@@ -991,6 +991,12 @@ class QNN:
                 )
             else:
                 raise ValueError("No execution is set!")
+
+            #prepostprocessing
+            if Expec("dp","O","dfdp") in op_list: #CHANGED
+                val = np.transpose(val[0], (2, 0, 1, 3))
+            else:
+                val = np.transpose(val[0], (1, 0, 2))
 
             # Swapp results into the following order:
             # 1. different observables (op_list)
@@ -1031,10 +1037,13 @@ class QNN:
                 if isinstance(val[iexpec], object):
                     # tolist() is needed, since numpy array conversion is otherwise hanging
                     val_final = np.array(val[iexpec].tolist(), dtype=float)
+
                 else:
                     val_final = val[iexpec]
+
                 reshape_list = []
                 shape = val_final.shape
+                
                 if multi_x:
                     reshape_list.append(len(x))
                 if multi_param:
@@ -1049,11 +1058,13 @@ class QNN:
                 else:
                     if len(shape) > 2:
                         reshape_list += list(shape[2:])
-                
+                """
                 if len(reshape_list) == 0:
                     value_dict[expec_] = val_final.reshape(-1)[0]
                 else:
                     value_dict[expec_] = val_final.reshape(reshape_list)
+                """
+                value_dict[expec_] = np.array([i[0] for i in val_final])#CHANGED remove np.array for old version
                 ioff = ioff + 1
 
         # Set-up lables from the input list
@@ -1121,5 +1132,4 @@ class QNN:
         # Store the updated dictionary for the theta value
         if self._result_caching:
             self.result_container[caching_tuple] = value_dict
-
         return value_dict
