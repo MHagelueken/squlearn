@@ -970,7 +970,8 @@ class QNN:
                     elif isinstance(optree_element, OpTreeCircuit):
                         return_list = []
                         for x_inp_ in x_inp:
-                            return_list.append(OpTreeCircuit(x_inp_.compose(optree_element.circuit)))
+                            x_inp_ = TranspiledEncodingCircuit(x_inp_, self._executor.backend)
+                            return_list.append(OpTreeCircuit(x_inp_.get_circuit([],[]).compose(optree_element.circuit)))
                         return OpTreeList(return_list)
                     elif isinstance(optree_element, OpTreeValue):
                         return optree_element  # Add nothing to the lists
