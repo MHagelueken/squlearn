@@ -882,20 +882,35 @@ class QNN:
             
 
         # Done with the helper functions, start of the evaluate function
+            
+        if isinstance(x[0],EncodingCircuitBase): #CHANGED
+            circuit_as_input = True
+        else:
+            circuit_as_input = False
 
         # input adjustments for x, param, param_op to get correct stacking of values
-        x_inp, multi_x = x,False #CHANGED adjust_features(x, self.num_features)
+        if circuit_as_input: #CHANGED
+            x_inp, multi_x = x,False
+        else:
+            x_inp, multi_x = adjust_features(x, self.num_features)
+
         param_inp, multi_param = adjust_parameters(param, self.num_parameters)
         param_op_inp, multi_param_op = adjust_parameters(param_op, self.num_parameters_operator)
 
         # build dictionary for later use
         dict_encoding_circuit = []
-        #for x_inp_ in x_inp:
-        #    dd = dict({0:x_inp_})#dd = dict(zip(self.pqc_derivatives.feature_vector, x_inp_)) #CHANGED 
-        for param_inp_ in param_inp:
-            ddd = dict() #dd.copy()
-            ddd.update(zip(self.pqc_derivatives.parameter_vector, param_inp_))
-            dict_encoding_circuit.append(ddd)
+        if circuit_as_input: #CHANGED
+            for param_inp_ in param_inp:
+                ddd = dict()
+                ddd.update(zip(self.pqc_derivatives.parameter_vector, param_inp_))
+                dict_encoding_circuit.append(ddd)
+        else:
+            for x_inp_ in x_inp:
+                dd = dict(zip(self.pqc_derivatives.feature_vector, x_inp_))
+                for param_inp_ in param_inp:
+                    ddd = dd.copy()
+                    ddd.update(zip(self.pqc_derivatives.parameter_vector, param_inp_))
+                    dict_encoding_circuit.append(ddd)
         dict_operator = [
             dict(zip(self.operator_derivatives.parameter_vector, p)) for p in param_op_inp
         ]
@@ -929,16 +944,18 @@ class QNN:
             )
 
             # get the circuits of the PQC derivatives from the encoding circuit module
-            pqc_optree_1 = self.pqc_derivatives.get_derivative(key)#CHANGED start
-            
-            x_inp_transpiled= []
-            for x_inp_ in x_inp:
-                x_inp_transpiled.append(TranspiledEncodingCircuit(x_inp_, self._executor.backend))
-            x_inp = x_inp_transpiled
-            
-            pqc_optree = OpTree.compose_optree_with_circuit(self,pqc_optree_1,x_inp) #CHANGED
+            if circuit_as_input: #CHANGED
+                x_inp_transpiled= []
+                for x_inp_ in x_inp:
+                    x_inp_transpiled.append(TranspiledEncodingCircuit(x_inp_, self._executor.backend))
+                x_inp = x_inp_transpiled
 
-            num_nested = OpTree.get_num_nested_lists(pqc_optree_1) #CHANGED
+                pqc_optree_1 = self.pqc_derivatives.get_derivative(key)
+                pqc_optree = OpTree.compose_optree_with_circuit(self,pqc_optree_1,x_inp)
+                num_nested = OpTree.get_num_nested_lists(pqc_optree_1)
+            else:
+                pqc_optree = self.pqc_derivatives.get_derivative(key)
+                num_nested = OpTree.get_num_nested_lists(pqc_optree)
 
             if self._sampler is not None:
                 val = OpTree.evaluate.evaluate_with_sampler(
@@ -951,13 +968,14 @@ class QNN:
             else:
                 raise ValueError("No execution is set!")
 
-            #prepostprocessing
-            if Expec("I","O","f") in op_list: #CHANGED
-                val = np.transpose(val[0], (1, 2, 0))
-            elif Expec("I","dop","dfdop") in op_list:
-                val = np.transpose(val[0], (1, 0, 2, 3))
-            elif Expec("dp","O","dfdp") in op_list:
-                val = np.transpose(val[0], (2, 0, 1, 3))
+            if circuit_as_input:
+                #prepostprocessing
+                if Expec("I","O","f") in op_list: #CHANGED
+                    val = np.transpose(val[0], (1, 2, 0))
+                elif Expec("I","dop","dfdop") in op_list:
+                    val = np.transpose(val[0], (1, 0, 2, 3))
+                elif Expec("dp","O","dfdp") in op_list:
+                    val = np.transpose(val[0], (2, 0, 1, 3))
 
             # Swapp results into the following order:
             # 1. different observables (op_list)
@@ -1019,13 +1037,14 @@ class QNN:
                 else:
                     if len(shape) > 2:
                         reshape_list += list(shape[2:])
-                """
-                if len(reshape_list) == 0:
-                    value_dict[expec_] = val_final.reshape(-1)[0]
+
+                if circuit_as_input: #CHANGED
+                    value_dict[expec_] = np.array([i[0] for i in val_final])
                 else:
-                    value_dict[expec_] = val_final.reshape(reshape_list)
-                """
-                value_dict[expec_] = np.array([i[0] for i in val_final])#CHANGED remove np.array for old version
+                    if len(reshape_list) == 0:
+                        value_dict[expec_] = val_final.reshape(-1)[0]
+                    else:
+                        value_dict[expec_] = val_final.reshape(reshape_list)
                 ioff = ioff + 1
 
         # Set-up lables from the input list
