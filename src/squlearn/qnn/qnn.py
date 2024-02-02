@@ -939,8 +939,6 @@ class QNN:
             pqc_optree = OpTree.compose_optree_with_circuit(self,pqc_optree_1,x_inp) #CHANGED
 
             num_nested = OpTree.get_num_nested_lists(pqc_optree_1) #CHANGED
-            
-            num_nested = OpTree.get_num_nested_lists(pqc_optree_1) #CHANGED
 
             if self._sampler is not None:
                 val = OpTree.evaluate.evaluate_with_sampler(
